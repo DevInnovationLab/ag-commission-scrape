@@ -1,11 +1,7 @@
-library("rvest")
-library("tidyverse")
-library("here")
-library("assertthat")
+# User input -------------------------------------------------------------------
 
 variable_terms <- 
   c(
-    "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Dietary+Diversity%22",
     "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Food+Consumption+Score%22",
     "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Agriculture%22+AND+%22Productivity%22"
   )
@@ -14,6 +10,13 @@ variable_terms <-
 main_url       <- "https://cgspace.cgiar.org/discover?rpp=10&etal=0&query="
 fixed_terms    <- "+AND+%28%E2%80%9Cintervention%E2%80%9D+OR+%E2%80%9Cevaluation%E2%80%9D+OR+%E2%80%9Ctrial%E2%80%9D+OR+%E2%80%9Cimpact%E2%80%9D+OR+%E2%80%9Cexperiment%E2%80%9D%29&scope=/&group_by=none&page="
 filters        <- "&filtertype_0=dateIssued&filtertype_1=type&filtertype_2=iso&filter_relational_operator_1=contains&filter_relational_operator_0=contains&filter_2=en&filter_1=Journal+Article&filter_relational_operator_2=contains&filter_0=%5B2000+TO+2023%5D"
+
+# Packages ---------------------------------------------------------------------
+
+library("rvest")
+library("tidyverse")
+library("here")
+library("assertthat")
 
 # Functions --------------------------------------------------------------------
 
@@ -123,26 +126,40 @@ list_papers <-
       mutate(url = paste0("https://cgspace.cgiar.org", url))
   }
 
+extract_details <-
+  function(content, string) {
+    
+    if (any(str_detect(content, string))) {
+      content %>% 
+        pluck(which(str_detect(., string))) %>% 
+        str_remove(string) %>% 
+        str_trim %>%
+        str_replace_all("’", "'") %>%
+        str_replace_all("‘", "'") %>%
+        str_replace_all("–", "-") %>%
+        str_remove_all(" ") %>%
+        str_replace_all("“", '"') %>%
+        str_replace_all("”", '"') %>%
+        str_replace_all("‐", "-")
+        
+    } else {
+      NA
+    }
+  }
+
 get_paper_details <-
   function(paper_url) {
-    paper_page <-
-      read_html(paper_url)
     
-    paper_page %>%
+    content <- 
+      read_html(paper_url) %>%
       html_nodes(".simple-item-view-description") %>%
-      html_text %>%
-      t %>%
-      as.data.frame() %>%
-      select(1:3) %>%
-      transmute(
-        citation = V1 %>%
-          str_remove("\nCitation\n") %>%
-          str_squish,
-        abstract = V3 %>%
-          str_remove("\nAbstract/Description\n") %>%
-          str_squish,
-        url = paper_url
-      )
+      html_text
+    
+    data.frame(
+      "citation" = extract_details(content, "Citation"),
+      "abstract" = extract_details(content, "Abstract/Description"),
+      "url" = paper_url
+    )
   }
 
 # Scrape -----------------------------------------------------------------------
@@ -206,17 +223,18 @@ for (terms in 1:length(variable_terms)) {
         by = "url"
       )
     
-    # Save resulting dataset
+    # Save resulting data set
     write_csv(
       papers,
       here(
         "data",
         paste0("search_params", terms, ".csv")
-      )
+      ),
+      na = ""
     )
     
     # Start a new data frame for next search
-    rm(papers, abstracts, term, n_entries, n_pages, search_results)
+    rm(papers, abstracts, term, n_entries, n_pages, papers_new, search_results)
   }
 }
 
