@@ -224,6 +224,12 @@ for (terms in 1:length(variable_terms)) {
         papers,
         abstracts,
         by = "url"
+      ) %>%
+      mutate(
+        across(
+          c(title, authors, abstract, citation),
+          ~ . %>% iconv(to = 'ASCII//TRANSLIT')
+        )
       )
     
     # Save resulting data set
