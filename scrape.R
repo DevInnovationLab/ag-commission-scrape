@@ -186,6 +186,9 @@ for (terms in 1:length(variable_terms)) {
       }
     }
     
+    papers <-
+      unique(papers)
+    
     # Check that we have the right number of entries
     validate_that(
       nrow(papers) == n_entries,
