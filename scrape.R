@@ -3,8 +3,15 @@ library("tidyverse")
 library("here")
 library("assertthat")
 
+variable_terms <- 
+  c(
+    "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Dietary+Diversity%22",
+    "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Food+Consumption+Score%22",
+    "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Agriculture%22+AND+%22Productivity%22"
+  )
+
+
 main_url       <- "https://cgspace.cgiar.org/discover?rpp=10&etal=0&query="
-variable_terms <- "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Dietary+Diversity%22"
 fixed_terms    <- "+AND+%28%E2%80%9Cintervention%E2%80%9D+OR+%E2%80%9Cevaluation%E2%80%9D+OR+%E2%80%9Ctrial%E2%80%9D+OR+%E2%80%9Cimpact%E2%80%9D+OR+%E2%80%9Cexperiment%E2%80%9D%29&scope=/&group_by=none&page="
 filters        <- "&filtertype_0=dateIssued&filtertype_1=type&filtertype_2=iso&filter_relational_operator_1=contains&filter_relational_operator_0=contains&filter_2=en&filter_1=Journal+Article&filter_relational_operator_2=contains&filter_0=%5B2000+TO+2023%5D"
 
@@ -22,13 +29,41 @@ read_url <-
       read_html()
   }
 
-number_of_results <-
-  function(page) {
-    page %>%
+count_entries <-
+  function(term, term_number) {
+    
+    page <- read_url(term, 1)
+    
+    n_entries <- 
+      page %>%
       html_nodes(".pagination-info") %>%
       html_text %>%
       str_remove("Now showing items 1-10 of ") %>%
       as.integer()
+    
+    if (length(n_entries) == 0) {
+      
+      print(
+        paste0(
+          "There are no entries for search parameters #",
+          term_number
+        )
+      )
+      
+      return(NULL)
+      
+    } else {
+      
+      print(
+        paste0(
+          "There are ",
+          n_entries,
+          " entries for search parameters #",
+          term_number
+        )
+      )
+      return(n_entries)
+    }
   }
 
 list_papers <-
@@ -114,59 +149,74 @@ get_paper_details <-
 
 for (terms in 1:length(variable_terms)) {
   
-  term <- variable_terms[terms]
+  term      <- variable_terms[terms]
+  n_entries <- count_entries(term, terms)
   
-  page          <- read_url(term, 1)
-  n_results     <- number_of_results(page)
-  n_pages       <- ceiling(n_results/10)
-  papers        <- list_papers(page)
-  
-  if (n_pages > 1) {
-    for (page_no in 2:n_pages) {
-      page       <- read_url(term, page_no)
-      papers_new <- list_papers(page)
-      papers     <- bind_rows(papers, papers_new)
+  # Only extract results if there are any
+  if (!is.null(n_entries)) {
+    
+    n_pages         <- ceiling(n_entries/10)
+    
+    # Loop through all pages to get list of papers
+    for (page_no in 1:n_pages) {
+      search_results  <- read_url(term, page_no)
+      papers_new      <- list_papers(search_results)
+      
+      if (exists("papers")) {
+        papers <- bind_rows(papers, papers_new)
+      } else {
+        papers <- papers_new
+      }
     }
     
-  }
-  
-  # assert_that(
-  #   nrow(papers) == n_results,
-  #   error = paste(
-  #     "Something went wrong: the page lists",
-  #     n_results,
-  #     "papers in the search, but only",
-  #     nrow(papers),
-  #     "are included in the data set"
-  #   )
-  # )
-  # 
-  abstracts <-
-    map(
-      papers$url,
-      get_paper_details
-    ) %>%
-    bind_rows
-  
-  papers <-
-    left_join(
-      papers,
-      abstracts,
-      by = "url"
-    ) %>%
-    unique
-  
-  write_csv(
-    papers,
-    here(
-      "data",
-      paste0(
-        "search_terms",
+    # Check that we have the right number of entries
+    validate_that(
+      nrow(papers) == n_entries,
+      msg = paste0(
+        "Something went wrong when looking for search parameters #",
         terms,
-        ".csv"
+        ": the page lists ",
+        n_entries,
+        " papers in the search, but only ",
+        nrow(papers),
+        " were included in the data set"
       )
     )
-  )
-  
+    
+    # Get abstracts
+    print(
+      paste0(
+        "Retrieving abstracts for search parameters #",
+        terms
+      )
+    )
+    
+    abstracts <-
+      map(
+        papers$url,
+        get_paper_details
+      ) %>%
+      bind_rows
+    
+    # Combine abstracts and paper info
+    papers <-
+      left_join(
+        papers,
+        abstracts,
+        by = "url"
+      )
+    
+    # Save resulting dataset
+    write_csv(
+      papers,
+      here(
+        "data",
+        paste0("search_params", terms, ".csv")
+      )
+    )
+    
+    # Start a new data frame for next search
+    rm(papers, abstracts, term, n_entries, n_pages, search_results)
+  }
 }
 
