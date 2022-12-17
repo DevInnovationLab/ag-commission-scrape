@@ -2,8 +2,8 @@
 
 variable_terms <- 
   c(
-    "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Food+Consumption+Score%22",
-    "%22Rural%22+AND+%22Nutrition%22+AND+%22Education%22+AND+%22Campaign%22+AND+%22Agriculture%22+AND+%22Productivity%22"
+    "%28%E2%80%9CClimate-smart%E2%80%9D+OR+%E2%80%9CClimate+smart%E2%80%9D%29+AND+%22Agriculture%22+AND+%22Food+Consumption+Score%22",
+    "%22Agriculture%22+AND+%22Extension%22+AND+%28%E2%80%9CBundled%E2%80%9D+OR+%E2%80%9CBundle%E2%80%9D+OR+%E2%80%9CPackage%E2%80%9D%29+AND+%22Food+Consumption+Score%22"
   )
 
 
@@ -41,7 +41,7 @@ count_entries <-
       page %>%
       html_nodes(".pagination-info") %>%
       html_text %>%
-      str_remove("Now showing items 1-10 of ") %>%
+      word(-1) %>%
       as.integer()
     
     if (length(n_entries) == 0) {
